@@ -1,0 +1,23 @@
+# Maintainer: Substazz <https://github.com/Substazz>
+pkgname=obs-studio-player
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Studio Player dock for OBS — queue, local files, YouTube, Twitch VODs/clips, saved playlists"
+arch=('x86_64')
+url="https://github.com/Substazz/studio-player"
+license=('GPL2')
+depends=('obs-studio' 'qt6-base')
+makedepends=('cmake' 'git')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cmake -B build -S "$pkgname-$pkgver" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr
+    cmake --build build
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+}

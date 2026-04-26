@@ -1,0 +1,10 @@
+{
+  "name": "obs-studio-player",
+  "version": "1.0.0",
+  "platformConfig": {
+    "mac-universal": {
+      "bundleId": "com.substazz.obs-studio-player"
+    }
+  },
+  "dependencies": {}
+}

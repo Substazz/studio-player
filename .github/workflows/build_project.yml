@@ -1,0 +1,265 @@
+name: Build Plugin
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  OBS_VERSION: "30.2.2"
+
+jobs:
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install OBS dev headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libobs-dev qt6-base-dev cmake ninja-build
+
+      - name: Configure
+        run: |
+          cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="/usr"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Install
+        run: DESTDIR="${{ github.workspace }}/release" cmake --install build
+
+      - name: Package
+        run: tar -czf obs-studio-player-linux-x86_64.tar.gz -C "${{ github.workspace }}/release" .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: obs-studio-player-linux
+          path: obs-studio-player-linux-x86_64.tar.gz
+
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Qt6
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "aqtinstall==3.1.*"
+          python -m aqt install-qt windows desktop 6.7.3 win64_msvc2019_64 -O C:\Qt
+          "Qt6_DIR=C:\Qt\6.7.3\msvc2019_64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "C:\Qt\6.7.3\msvc2019_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Download OBS pre-built deps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Path C:\deps-raw -Force
+          New-Item -ItemType Directory -Path C:\obs-deps -Force
+          # Anchor pattern to a digit so windows-deps-qt6-* is excluded
+          gh release download --repo obsproject/obs-deps --pattern "windows-deps-[0-9]*-x64*.zip" --dir C:\deps-raw
+          $zip = (Get-ChildItem "C:\deps-raw" -Filter "*.zip" | Select-Object -First 1).FullName
+          Write-Host "Extracting: $zip"
+          Expand-Archive $zip -DestinationPath C:\obs-deps-extract
+          # Handle zips with a single inner directory vs direct content
+          $top = Get-ChildItem "C:\obs-deps-extract"
+          if ($top.Count -eq 1 -and $top[0].PSIsContainer) {
+            Get-ChildItem $top[0].FullName | Move-Item -Destination C:\obs-deps
+          } else {
+            $top | Move-Item -Destination C:\obs-deps
+          }
+          Write-Host "obs-deps contents: $(Get-ChildItem C:\obs-deps | Select-Object -ExpandProperty Name)"
+
+      - name: Download OBS source
+        shell: powershell
+        run: |
+          Invoke-WebRequest "https://github.com/obsproject/obs-studio/archive/refs/tags/${{ env.OBS_VERSION }}.zip" -OutFile obs.zip
+          Expand-Archive obs.zip -DestinationPath C:\
+
+      - name: Configure OBS
+        shell: cmd
+        run: |
+          cmake -B C:\obs-build -S "C:\obs-studio-${{ env.OBS_VERSION }}" -A x64 ^
+            -DENABLE_PLUGINS=OFF ^
+            -DENABLE_SCRIPTING=OFF ^
+            -DENABLE_BROWSER=OFF ^
+            -DENABLE_UPDATER=OFF ^
+            -DCMAKE_SYSTEM_VERSION=10.0 ^
+            -DDepsPath="C:\obs-deps" ^
+            -DFFMPEG_PATH="C:\obs-deps" ^
+            -DQTDIR="%Qt6_DIR%" ^
+            -DCMAKE_PREFIX_PATH="C:\obs-deps;%Qt6_DIR%"
+
+      - name: Build OBS
+        run: cmake --build C:\obs-build --target obs-frontend-api --config Release --parallel
+
+      - name: Install OBS dev
+        run: cmake --install C:\obs-build --config Release --component obs_libraries --prefix C:\obs-dev
+
+      - name: Configure plugin
+        shell: cmd
+        run: |
+          cmake -B build -S . -A x64 ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="C:\obs-dev;%Qt6_DIR%"
+
+      - name: Build plugin
+        run: cmake --build build --config Release
+
+      - name: Install plugin
+        run: cmake --install build --config Release --prefix "${{ github.workspace }}\release"
+
+      - name: Package
+        run: Compress-Archive -Path "${{ github.workspace }}\release\*" -DestinationPath obs-studio-player-windows.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: obs-studio-player-windows
+          path: obs-studio-player-windows.zip
+
+  macos:
+    name: macOS Apple Silicon
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: brew install cmake ninja ffmpeg qt@6 speexdsp librist srt
+
+      - name: Clone OBS source
+        run: |
+          git clone --depth=1 --branch ${{ env.OBS_VERSION }} \
+            https://github.com/obsproject/obs-studio.git /tmp/obs
+
+      - name: Configure OBS
+        run: |
+          cmake -B /tmp/obs-build -S /tmp/obs \
+            -G Xcode \
+            -DENABLE_PLUGINS=OFF \
+            -DENABLE_SCRIPTING=OFF \
+            -DENABLE_BROWSER=OFF \
+            -DENABLE_VLC=OFF \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6);$(brew --prefix ffmpeg);$(brew --prefix)"
+
+      - name: Build OBS
+        run: cmake --build /tmp/obs-build --target obs-frontend-api --config Release --parallel
+
+      - name: Install OBS dev
+        run: cmake --install /tmp/obs-build --config Release --component Development --prefix /tmp/obs-dev
+
+      - name: Configure plugin
+        run: |
+          cmake -B build -S . \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Dlibobs_DIR="/tmp/obs-dev/Frameworks/libobs.framework/Resources/cmake" \
+            -Dobs-frontend-api_DIR="/tmp/obs-dev/lib/cmake/obs-frontend-api" \
+            -DCMAKE_PREFIX_PATH="/tmp/obs-dev;$(brew --prefix qt@6)"
+
+      - name: Build plugin
+        run: cmake --build build
+
+      - name: Install plugin
+        run: DESTDIR="${{ github.workspace }}/release" cmake --install build
+
+      - name: Package
+        run: |
+          bundle="macos-package/obs-studio-player.plugin"
+          bundle_version="${GITHUB_REF_NAME#v}"
+          if ! printf '%s' "$bundle_version" | grep -Eq '^[0-9]+([.][0-9]+){1,2}([-.][0-9A-Za-z.]+)?$'; then
+            bundle_version="1.0.0"
+          fi
+
+          mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
+
+          plugin_binary="$(find "${{ github.workspace }}/release" -type f -name 'libobs-studio-player.*' -print -quit)"
+          plugin_data="$(find "${{ github.workspace }}/release" -type d -path '*/obs-studio-player' -print -quit)"
+
+          if [ -z "$plugin_binary" ]; then
+            echo "Could not find the built macOS plugin binary"
+            find "${{ github.workspace }}/release" -maxdepth 6 -type f -print
+            exit 1
+          fi
+
+          if [ -z "$plugin_data" ]; then
+            echo "Could not find the installed plugin data directory"
+            find "${{ github.workspace }}/release" -maxdepth 6 -type d -print
+            exit 1
+          fi
+
+          cp "$plugin_binary" "$bundle/Contents/MacOS/obs-studio-player"
+          cp -R "$plugin_data"/. "$bundle/Contents/Resources/"
+          chmod +x "$bundle/Contents/MacOS/obs-studio-player"
+
+          cat > "$bundle/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleExecutable</key>
+            <string>obs-studio-player</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.substazz.obs-studio-player</string>
+            <key>CFBundleName</key>
+            <string>Studio Player</string>
+            <key>CFBundlePackageType</key>
+            <string>BNDL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${bundle_version}</string>
+            <key>CFBundleVersion</key>
+            <string>${bundle_version}</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+          </dict>
+          </plist>
+          PLIST
+
+          printf 'BNDL????' > "$bundle/Contents/PkgInfo"
+          codesign --force --sign - "$bundle/Contents/MacOS/obs-studio-player"
+          codesign --force --deep --sign - "$bundle"
+
+          tar -czf obs-studio-player-macos.tar.gz -C macos-package obs-studio-player.plugin
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: obs-studio-player-macos
+          path: obs-studio-player-macos.tar.gz
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - linux
+      - windows
+      - macos
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            release-assets/obs-studio-player-linux-x86_64.tar.gz
+            release-assets/obs-studio-player-windows.zip
+            release-assets/obs-studio-player-macos.tar.gz
