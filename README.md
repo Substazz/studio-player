@@ -143,23 +143,6 @@ Studio Player registers these OBS frontend hotkeys:
 
 Configure them in OBS under `Settings` > `Hotkeys`.
 
-## GitHub Releases
-
-This project is designed to be hosted completely on GitHub. For OBSProject.com, you can link directly to:
-
-```text
-https://github.com/Substazz/studio-player/releases/latest
-```
-
-To publish a new version:
-
-1. Push your changes to `main`.
-2. Create a new tag such as `v1.0.2`.
-3. The GitHub Actions workflow builds Linux, Windows, and macOS packages.
-4. The final release job attaches the three platform assets to the GitHub Release.
-
-If a release is marked as a pre-release, GitHub may not use it for the `/releases/latest` link. For public downloads, edit the release and uncheck `Set as a pre-release`.
-
 ## Build From Source
 
 The CI workflow is the reference build. It builds against OBS `30.2.2`.
