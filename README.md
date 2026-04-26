@@ -169,7 +169,7 @@ If Studio Player does not appear after installing:
 - Open an issue with your OS, OBS version, and the package you downloaded.
 
 <p align="center">
-  <a href="https://www.buymeacoffee.com/substanzz">
+  <a href="https://www.buymeacoffee.com/substazz">
     <img src="https://cdn.buymeacoffee.com/buttons/v2/arial-blue.png" alt="Buy Me a Coffee" height="60">
   </a>
 </p>
