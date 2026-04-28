@@ -71,7 +71,8 @@ Start OBS again. The `Studio Player` dock should appear after OBS finishes loadi
 1. Close OBS.
 2. Download `obs-studio-player-macos.tar.gz`.
 3. Extract the archive.
-4. Copy `obs-studio-player.plugin` into:
+4. Create the OBS user plugin folder if it does not already exist.
+5. Copy `obs-studio-player.plugin` into:
 
 ```text
 ~/Library/Application Support/obs-studio/plugins/
@@ -80,15 +81,24 @@ Start OBS again. The `Studio Player` dock should appear after OBS finishes loadi
 Terminal install:
 
 ```bash
-mkdir -p "$HOME/Library/Application Support/obs-studio/plugins"
+PLUGIN_DIR="$HOME/Library/Application Support/obs-studio/plugins"
+PLUGIN="$PLUGIN_DIR/obs-studio-player.plugin"
+
+mkdir -p "$PLUGIN_DIR"
 tar -xzf obs-studio-player-macos.tar.gz
-cp -R obs-studio-player.plugin "$HOME/Library/Application Support/obs-studio/plugins/"
+rm -rf "$PLUGIN"
+cp -R obs-studio-player.plugin "$PLUGIN_DIR/"
 ```
 
-Start OBS again. If macOS blocks the unsigned plugin after downloading it from a browser, remove the quarantine flag and reopen OBS:
+OBS may not create the `plugins` folder until a third-party plugin is installed.
+
+Start OBS again. The `Studio Player` dock should appear after OBS finishes loading.
+
+If macOS blocks the unsigned plugin after downloading it from a browser, remove the quarantine flag and reopen OBS:
 
 ```bash
-xattr -dr com.apple.quarantine "$HOME/Library/Application Support/obs-studio/plugins/obs-studio-player.plugin"
+PLUGIN="$HOME/Library/Application Support/obs-studio/plugins/obs-studio-player.plugin"
+xattr -cr "$PLUGIN"
 ```
 
 ### Linux x86_64
@@ -182,7 +192,8 @@ If Studio Player does not appear after installing:
 - Confirm that OBS was fully closed before copying files.
 - Confirm that you downloaded the platform asset, not the automatic source archive.
 - Confirm that the files landed in the expected install folders above.
-- On macOS, remove the quarantine flag if OBS refuses to load the plugin.
+- On macOS, look for `Studio Player` under the OBS `Docks` menu.
+- If OBS reports that `obs-studio-player` failed to load, open the OBS log from `Help` -> `Log Files` -> `View Current Log` and search for `obs-studio-player`.
 - Open an issue with your OS, OBS version, and the package you downloaded.
 
 <p align="center">

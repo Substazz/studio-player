@@ -11,6 +11,11 @@ MODULE_EXPORT const char *obs_module_description(void)
     return "Studio Player - local video playback, queue, and embed controls for OBS scenes and recordings";
 }
 
+MODULE_EXPORT const char *obs_module_name(void)
+{
+    return "Studio Player";
+}
+
 static StudioPlayerDock *g_dock = nullptr;
 static constexpr const char *DOCK_ID = "obs-studio-player";
 
@@ -24,10 +29,12 @@ static void on_frontend_event(enum obs_frontend_event event, void *)
     auto *mainWindow = static_cast<QMainWindow *>(obs_frontend_get_main_window());
     g_dock = new StudioPlayerDock(mainWindow);
     obs_frontend_add_custom_qdock(DOCK_ID, g_dock);
+    blog(LOG_INFO, "[obs-studio-player] Studio Player dock registered");
 }
 
 bool obs_module_load(void)
 {
+    blog(LOG_INFO, "[obs-studio-player] plugin loaded");
     obs_frontend_add_event_callback(on_frontend_event, nullptr);
     return true;
 }

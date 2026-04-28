@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#09090f"/>
+    </linearGradient>
+    <linearGradient id="chromeGrad" x1="0" y1="96" x2="0" y2="148" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2e2a7a"/>
+      <stop offset="100%" stop-color="#1a1754"/>
+    </linearGradient>
+    <linearGradient id="playGrad" x1="168" y1="184" x2="344" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#5b21b6"/>
+    </linearGradient>
+    <clipPath id="win">
+      <rect x="56" y="96" width="400" height="320" rx="18"/>
+    </clipPath>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="12" result="blur"/>
+      <feFlood flood-color="#7c3aed" flood-opacity="0.55" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="14" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- App icon background -->
+  <rect width="512" height="512" rx="80" fill="url(#bgGrad)"/>
+
+  <!-- Subtle inner glow on background edge -->
+  <rect width="512" height="512" rx="80" fill="none"
+        stroke="#4338ca" stroke-width="2" opacity="0.25"/>
+
+  <!-- Browser window drop shadow -->
+  <rect x="56" y="96" width="400" height="320" rx="18" fill="#000000"
+        opacity="0.4" filter="url(#softShadow)"/>
+
+  <!-- Browser window body -->
+  <rect x="56" y="96" width="400" height="320" rx="18" fill="#0c0a20"/>
+
+  <!-- Browser chrome + content clipped to window -->
+  <g clip-path="url(#win)">
+    <!-- Title bar -->
+    <rect x="56" y="96" width="400" height="52" fill="url(#chromeGrad)"/>
+
+    <!-- Hamburger menu icon (left) -->
+    <rect x="80" y="113" width="28" height="3" rx="1.5" fill="#8b87d4" opacity="0.7"/>
+    <rect x="80" y="121" width="20" height="3" rx="1.5" fill="#8b87d4" opacity="0.5"/>
+    <rect x="80" y="129" width="24" height="3" rx="1.5" fill="#8b87d4" opacity="0.7"/>
+
+    <!-- URL / address bar pill — centered -->
+    <rect x="128" y="110" width="256" height="24" rx="12" fill="#100e3a"/>
+
+    <!-- Tiny globe icon in address bar -->
+    <circle cx="142" cy="122" r="6" fill="none" stroke="#6d5acf" stroke-width="1.5"/>
+    <line x1="142" y1="116" x2="142" y2="128" stroke="#6d5acf" stroke-width="1" opacity="0.6"/>
+    <line x1="136" y1="122" x2="148" y2="122" stroke="#6d5acf" stroke-width="1" opacity="0.6"/>
+
+    <!-- Content area -->
+    <rect x="56" y="148" width="400" height="268" fill="#080617"/>
+  </g>
+
+  <!-- Window border -->
+  <rect x="56" y="96" width="400" height="320" rx="18"
+        fill="none" stroke="#4338ca" stroke-width="2" opacity="0.5"/>
+
+  <!-- Chrome / content divider line -->
+  <line x1="56" y1="148" x2="456" y2="148" stroke="#4338ca" stroke-width="1" opacity="0.35"/>
+
+  <!-- Play button circle with glow -->
+  <circle cx="256" cy="268" r="90" fill="url(#playGrad)" filter="url(#glow)"/>
+
+  <!-- Highlight glint on play button -->
+  <ellipse cx="228" cy="244" rx="44" ry="22"
+           fill="white" opacity="0.07" transform="rotate(-25 228 244)"/>
+
+  <!-- Play triangle — shifted right ~10px from center for optical balance -->
+  <polygon points="230,234 230,304 314,269" fill="#ffffff"/>
+
+  <!-- Progress bar track -->
+  <rect x="80" y="384" width="352" height="6" rx="3" fill="#1a1640"/>
+
+  <!-- Progress bar fill -->
+  <rect x="80" y="384" width="142" height="6" rx="3" fill="#7c3aed"/>
+
+  <!-- Playhead knob -->
+  <circle cx="222" cy="387" r="9" fill="#ffffff" opacity="0.95"/>
+</svg>

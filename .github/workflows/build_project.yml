@@ -12,7 +12,8 @@ permissions:
   actions: read
 
 env:
-  OBS_VERSION: "30.2.2"
+  OBS_VERSION: "32.1.2"
+  OBS_DEPS_VERSION: "2025-08-23"
 
 jobs:
   linux:
@@ -135,7 +136,22 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install dependencies
-        run: brew install cmake ninja ffmpeg qt@6 speexdsp librist srt
+        run: brew install cmake ninja
+
+      - name: Download OBS pre-built deps
+        run: |
+          mkdir -p /tmp/obs-deps /tmp/obs-deps-qt6
+          curl -fsSL \
+            "https://github.com/obsproject/obs-deps/releases/download/${{ env.OBS_DEPS_VERSION }}/macos-deps-${{ env.OBS_DEPS_VERSION }}-arm64.tar.xz" \
+            | tar -xJ -C /tmp/obs-deps
+          curl -fsSL \
+            "https://github.com/obsproject/obs-deps/releases/download/${{ env.OBS_DEPS_VERSION }}/macos-deps-qt6-${{ env.OBS_DEPS_VERSION }}-arm64.tar.xz" \
+            | tar -xJ -C /tmp/obs-deps-qt6
+
+      - name: Verify macOS Qt dependency version
+        run: |
+          /tmp/obs-deps-qt6/bin/qtpaths --qt-version
+          test "$(/tmp/obs-deps-qt6/bin/qtpaths --qt-version)" = "6.8.3"
 
       - name: Clone OBS source
         run: |
@@ -152,7 +168,7 @@ jobs:
             -DENABLE_VLC=OFF \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
-            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6);$(brew --prefix ffmpeg);$(brew --prefix)"
+            -DCMAKE_PREFIX_PATH="/tmp/obs-deps-qt6;/tmp/obs-deps"
 
       - name: Build OBS
         run: cmake --build /tmp/obs-build --target obs-frontend-api --config Release --parallel
@@ -167,7 +183,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -Dlibobs_DIR="/tmp/obs-dev/Frameworks/libobs.framework/Resources/cmake" \
             -Dobs-frontend-api_DIR="/tmp/obs-dev/lib/cmake/obs-frontend-api" \
-            -DCMAKE_PREFIX_PATH="/tmp/obs-dev;$(brew --prefix qt@6)"
+            -DQt6_DIR="/tmp/obs-deps-qt6/lib/cmake/Qt6" \
+            -DCMAKE_PREFIX_PATH="/tmp/obs-dev;/tmp/obs-deps-qt6"
 
       - name: Build plugin
         run: cmake --build build
@@ -231,6 +248,32 @@ jobs:
           PLIST
 
           printf 'BNDL????' > "$bundle/Contents/PkgInfo"
+
+          # Homebrew Qt frameworks use absolute install names such as
+          # /opt/homebrew/opt/qtbase/lib/QtWidgets.framework/...
+          # Release bundles must resolve Qt from OBS.app's framework rpaths instead.
+          qt_prefixes=(/tmp/obs-deps-qt6)
+          for formula in qtbase qt@6; do
+            if prefix="$(brew --prefix "$formula" 2>/dev/null)"; then
+              qt_prefixes+=("$prefix")
+            fi
+          done
+
+          for framework in QtCore QtGui QtNetwork QtWidgets; do
+            for prefix in "${qt_prefixes[@]}"; do
+              install_name_tool \
+                -change "$prefix/lib/${framework}.framework/Versions/A/${framework}" \
+                "@rpath/${framework}.framework/Versions/A/${framework}" \
+                "$bundle/Contents/MacOS/obs-studio-player" 2>/dev/null || true
+            done
+          done
+
+          if otool -L "$bundle/Contents/MacOS/obs-studio-player" |
+            grep -E '(/opt/homebrew|/usr/local/opt|/tmp/|/Users/).*/Qt(Core|Gui|Network|Widgets)\.framework'; then
+            echo "Absolute Qt install names leaked into the macOS plugin bundle"
+            exit 1
+          fi
+
           codesign --force --sign - "$bundle/Contents/MacOS/obs-studio-player"
           codesign --force --deep --sign - "$bundle"
 
