@@ -131,7 +131,7 @@ jobs:
 
   macos:
     name: macOS Apple Silicon
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
 
@@ -152,6 +152,12 @@ jobs:
         run: |
           /tmp/obs-deps-qt6/bin/qtpaths --qt-version
           test "$(/tmp/obs-deps-qt6/bin/qtpaths --qt-version)" = "6.8.3"
+
+      - name: Verify macOS SDK version
+        run: |
+          sdk_version="$(xcrun --sdk macosx --show-sdk-platform-version)"
+          echo "macOS SDK: $sdk_version"
+          awk -v sdk="$sdk_version" 'BEGIN { exit (sdk >= 15.0) ? 0 : 1 }'
 
       - name: Clone OBS source
         run: |
