@@ -56,7 +56,11 @@ jobs:
         shell: powershell
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "aqtinstall==3.1.*"
+          # py7zr 1.x regressed archive extraction and makes aqt fail with
+          # "Bad7zFile: Specified path is bad: .../qt_lib_uitools.pri" while
+          # unpacking Qt. Pin py7zr<1.0 (resolves to 0.22.0), the known-good
+          # extractor for aqtinstall 3.1.x.
+          python -m pip install "aqtinstall==3.1.*" "py7zr<1.0"
           python -m aqt install-qt windows desktop 6.7.3 win64_msvc2019_64 -O C:\Qt
           "Qt6_DIR=C:\Qt\6.7.3\msvc2019_64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "C:\Qt\6.7.3\msvc2019_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
@@ -106,14 +110,14 @@ jobs:
         run: cmake --build C:\obs-build --target obs-frontend-api --config Release --parallel
 
       - name: Install OBS dev
-        run: cmake --install C:\obs-build --config Release --component obs_libraries --prefix C:\obs-dev
+        run: cmake --install C:\obs-build --config Release --component Development --prefix C:\obs-dev
 
       - name: Configure plugin
         shell: cmd
         run: |
           cmake -B build -S . -A x64 ^
             -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_PREFIX_PATH="C:\obs-dev;%Qt6_DIR%"
+            -DCMAKE_PREFIX_PATH="C:\obs-dev;%Qt6_DIR%;C:\obs-deps"
 
       - name: Build plugin
         run: cmake --build build --config Release
@@ -164,6 +168,16 @@ jobs:
           git clone --depth=1 --branch ${{ env.OBS_VERSION }} \
             https://github.com/obsproject/obs-studio.git /tmp/obs
 
+          # OBS's Metal renderer (libobs-metal) is a Swift-only target, but the
+          # top-level project() never enables the Swift language, so CMake's
+          # generate step fails with "can not determine linker language for
+          # target: libobs-metal". We only need libobs + obs-frontend-api dev
+          # files to build the plugin; libobs-metal is a runtime graphics module
+          # that nothing here links against (it depends on libobs, not the other
+          # way around). Drop it from the OBS build so configure succeeds.
+          sed -i.bak 's/^\( *\)add_subdirectory(libobs-metal)/\1# add_subdirectory(libobs-metal) # disabled: Swift target not needed for dev build/' /tmp/obs/CMakeLists.txt
+          grep -n 'libobs-metal' /tmp/obs/CMakeLists.txt
+
       - name: Configure OBS
         run: |
           cmake -B /tmp/obs-build -S /tmp/obs \
@@ -190,7 +204,7 @@ jobs:
             -Dlibobs_DIR="/tmp/obs-dev/Frameworks/libobs.framework/Resources/cmake" \
             -Dobs-frontend-api_DIR="/tmp/obs-dev/lib/cmake/obs-frontend-api" \
             -DQt6_DIR="/tmp/obs-deps-qt6/lib/cmake/Qt6" \
-            -DCMAKE_PREFIX_PATH="/tmp/obs-dev;/tmp/obs-deps-qt6"
+            -DCMAKE_PREFIX_PATH="/tmp/obs-dev;/tmp/obs-deps-qt6;/tmp/obs-deps"
 
       - name: Build plugin
         run: cmake --build build
@@ -255,32 +269,32 @@ jobs:
 
           printf 'BNDL????' > "$bundle/Contents/PkgInfo"
 
-          # Homebrew Qt frameworks use absolute install names such as
-          # /opt/homebrew/opt/qtbase/lib/QtWidgets.framework/...
-          # Release bundles must resolve Qt from OBS.app's framework rpaths instead.
-          qt_prefixes=(/tmp/obs-deps-qt6)
-          for formula in qtbase qt@6; do
-            if prefix="$(brew --prefix "$formula" 2>/dev/null)"; then
-              qt_prefixes+=("$prefix")
-            fi
-          done
+          binary="$bundle/Contents/MacOS/obs-studio-player"
 
-          for framework in QtCore QtGui QtNetwork QtWidgets; do
-            for prefix in "${qt_prefixes[@]}"; do
-              install_name_tool \
-                -change "$prefix/lib/${framework}.framework/Versions/A/${framework}" \
-                "@rpath/${framework}.framework/Versions/A/${framework}" \
-                "$bundle/Contents/MacOS/obs-studio-player" 2>/dev/null || true
-            done
-          done
+          # Qt frameworks are linked with absolute install names that point at
+          # the build machine (e.g. /opt/homebrew/opt/qtbase/lib/QtCore.framework
+          # or /tmp/obs-deps-qt6/...). Those paths don't exist on user machines,
+          # so dyld fails to load the plugin and OBS reports "failed to load".
+          # Rewrite every absolute Qt reference to @rpath so the plugin resolves
+          # Qt from OBS.app's own bundled frameworks. Derive the actual install
+          # names from the binary itself rather than guessing build prefixes, so
+          # this stays correct regardless of where Qt came from.
+          otool -L "$binary" | awk 'NR > 1 { print $1 }' \
+            | grep -E '/Qt[A-Za-z]+\.framework/' \
+            | grep -v '^@rpath/' \
+            | while read -r dep; do
+                new="$(printf '%s' "$dep" | sed -E 's#^.*/(Qt[A-Za-z]+\.framework/.*)$#@rpath/\1#')"
+                echo "Rewriting Qt install name: $dep -> $new"
+                install_name_tool -change "$dep" "$new" "$binary"
+              done
 
-          if otool -L "$bundle/Contents/MacOS/obs-studio-player" |
-            grep -E '(/opt/homebrew|/usr/local/opt|/tmp/|/Users/).*/Qt(Core|Gui|Network|Widgets)\.framework'; then
+          if otool -L "$binary" |
+            grep -E '/Qt[A-Za-z]+\.framework/' | grep -v '@rpath/'; then
             echo "Absolute Qt install names leaked into the macOS plugin bundle"
             exit 1
           fi
 
-          codesign --force --sign - "$bundle/Contents/MacOS/obs-studio-player"
+          codesign --force --sign - "$binary"
           codesign --force --deep --sign - "$bundle"
 
           tar -czf obs-studio-player-macos.tar.gz -C macos-package obs-studio-player.plugin
